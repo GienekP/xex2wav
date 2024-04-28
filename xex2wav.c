@@ -319,7 +319,8 @@ int main(int argc, char *argv[])
 	else
 	{
 		printf("use:\n");
-		printf("   xex2wav file.xex file.wav\n");	
+		printf("   xex2wav file.xex file.wav\n");
+		printf("   xex2wav file1.xex file2.xex file.wav\n");
 	};
 	return 0;
 }
