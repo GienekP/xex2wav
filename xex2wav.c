@@ -2,28 +2,20 @@
 /* XEX2WAV - GienekP                                                  */
 /*--------------------------------------------------------------------*/
 #include <stdio.h>
-#include <stdlib.h> 
+#include <stdlib.h>
+#include <math.h>
 /*--------------------------------------------------------------------*/
 typedef unsigned char U8;
 /*--------------------------------------------------------------------*/
-/* 3 x 11 = 33 */
-const int space[11]={0, 17715, 29806, 32433, 24764, 9232, -9232, -24764, -32433, -29806, -17715};
-/*--------------------------------------------------------------------*/
-/* 4 * 8 = 32 */
-const int sign[8]={0, 23170, 32767, 23170, 0, -23170, -32767, -23170};
-/*--------------------------------------------------------------------*/
-#define SF 44100
-#define SIZESPACE (sizeof(space)/sizeof(int))
-#define SIZESIGN (sizeof(sign)/sizeof(int))
-/* 1336:1378 boudes */
-// #define NOSPACE 3
-// #define NOSIGN 4
-/* 668:612 boudes */
-#define NOSPACE 6
-#define NOSIGN 9
-#define GAPLONG 20000
-#define GAPNORMAL 3000
-#define GAPSHORT 250
+const unsigned int SF=44100;
+const unsigned int FQSPACE=3995;
+const unsigned int FQSIGN=5327;
+const unsigned int COUNT=73;
+const unsigned int BAUDS=(SF/COUNT);
+const unsigned int GAPLONG=20000;
+const unsigned int GAPNORMAL=3000;
+const unsigned int GAPSHORT=250;
+const unsigned int GAPSILENT=1000;
 /*--------------------------------------------------------------------*/
 /* "! File" */
 const U8 exma[485] = {
@@ -60,42 +52,25 @@ const U8 exma[485] = {
   0x00, 0x00, 0x00, 0x00, 0x00
 };
 /*--------------------------------------------------------------------*/
-void addSpace(int *track, unsigned int *pos)
+void addSilent(U8 *track, unsigned int *pos)
 {
-
-	unsigned int i,j;
-	if (pos)
-	{
-		for (j=0; j<NOSPACE; j++)
-		{
-			if (track)
-			{
-				for (i=0; i<SIZESPACE; i++) {track[(*pos)+i]=space[i];};
-			};
-			*pos+=SIZESPACE;
-		};
-	};
+	if (track) {track[*pos]=0;};
+	(*pos)++;
 }
 /*--------------------------------------------------------------------*/
-
-void addSign(int *track, unsigned int *pos)
+void addSpace(U8 *track, unsigned int *pos)
 {
-
-	unsigned int i,j;
-	if (pos)
-	{
-		for (j=0; j<NOSIGN; j++)
-		{
-			if (track)
-			{
-				for (i=0; i<SIZESIGN; i++) {track[(*pos)+i]=sign[i];};
-			};
-			*pos+=SIZESIGN;
-		};
-	};
+	if (track) {track[*pos]=1;};
+	(*pos)++;
 }
 /*--------------------------------------------------------------------*/
-void addByte(int *track, unsigned int *pos, U8 byte)
+void addSign(U8 *track, unsigned int *pos)
+{
+	if (track) {track[*pos]=2;};
+	(*pos)++;
+}
+/*--------------------------------------------------------------------*/
+void addByte(U8 *track, unsigned int *pos, U8 byte)
 {
 	unsigned int i; 
 	addSpace(track,pos);
@@ -107,7 +82,7 @@ void addByte(int *track, unsigned int *pos, U8 byte)
 	addSign(track,pos);
 }
 /*--------------------------------------------------------------------*/
-void addRecord(int *track, unsigned int *pos, const U8 *byte, U8 size)
+void addRecord(U8 *track, unsigned int *pos, const U8 *byte, U8 size)
 {
 	U8 i;
 	addByte(track,pos,0x55);
@@ -160,7 +135,7 @@ void addRecord(int *track, unsigned int *pos, const U8 *byte, U8 size)
 	};
 }
 /*--------------------------------------------------------------------*/
-void addGap(int *track, unsigned int *pos, U8 mode)
+void addGap(U8 *track, unsigned int *pos, U8 mode)
 {
 	unsigned int i,ms,n;
 	switch (mode)
@@ -170,24 +145,19 @@ void addGap(int *track, unsigned int *pos, U8 mode)
 		case 3: {ms=20*1000;} break;		
 		default: {ms=0;} break;
 	};
-	n=(SF*ms)/(1000*NOSIGN*SIZESIGN);
+	n=(ms*BAUDS)/1000;
 	for (i=0; i<n; i++) {addSign(track,pos);};
 }
 /*--------------------------------------------------------------------*/
-void addSilent(int *track, unsigned int *pos)
+void addInterspace(U8 *track, unsigned int *pos)
 {
-	unsigned int i;
-	if (pos)
-	{
-		if (track)
-		{
-			for (i=0; i<SF; i++) {track[(*pos)+i]=0;};
-		};
-		(*pos)+=SF;
-	};
+	unsigned int i,ms,n;
+	ms=GAPSILENT;
+	n=(ms*BAUDS)/1000;
+	for (i=0; i<n; i++) {addSilent(track,pos);};
 }
 /*--------------------------------------------------------------------*/
-void addFile(int *track, unsigned int *pos, const U8 *file, unsigned int size, U8 xex)
+void addFile(U8 *track, unsigned int *pos, const U8 *file, unsigned int size, U8 xex)
 {
 	unsigned int m=0;
 	int cnt=size;
@@ -211,11 +181,11 @@ void addFile(int *track, unsigned int *pos, const U8 *file, unsigned int size, U
 	addRecord(track,pos,file,0);
 }
 /*--------------------------------------------------------------------*/
-void addXEX(int *track, unsigned int *pos, const U8 *xex, unsigned int size)
+void addXEX(U8 *track, unsigned int *pos, const U8 *xex, unsigned int size)
 {
 	addFile(track,pos,exma,sizeof(exma),0);
 	addFile(track,pos,xex,size,1);
-	addSilent(track,pos);
+	addInterspace(track,pos);
 }
 /*--------------------------------------------------------------------*/
 unsigned int loadBIN(const char *filename, U8 *buf, unsigned int size)
@@ -247,7 +217,27 @@ void putInt32(U8 *data, unsigned int value)
 	data[3]=(U8)(d);	
 }
 /*--------------------------------------------------------------------*/
-void saveWAV(const char *filename, const int *data, unsigned int size)
+unsigned int calcSin(U8 bit)
+{
+	static double samp=SF;
+	static double phase=0;
+	int ret;
+	if (bit)
+	{
+		double freq;
+		if (bit==1) {freq=FQSPACE;} else {freq=FQSIGN;};
+		phase+=(4.0*acos(0.0)*freq/samp);
+		ret=30719.0*sin(phase);
+	}
+	else
+	{
+		phase=0;
+		ret=0;
+	};
+	return ret;
+};
+/*--------------------------------------------------------------------*/
+void saveWAV(const char *filename, const U8 *track, unsigned int size)
 {
 	U8 header[44]={0x52,0x49,0x46,0x46,
 		0xFF,0xFF,0xFF,0xFF,0x57,0x41,0x56,0x45,
@@ -256,26 +246,30 @@ void saveWAV(const char *filename, const int *data, unsigned int size)
 		0x10,0xB1,0x02,0x00,0x04,0x00,0x10,0x00,
 		0x64,0x61,0x74,0x61,0xFF,0xFF,0xFF,0xFF};
 	FILE *pf;
-	unsigned int filesize,datasize,i;
-	datasize=(4*size);
+	unsigned int filesize,datasize,i,j;
+	datasize=(4*size*COUNT);
 	filesize=(sizeof(header)+datasize-8);
 	putInt32(&header[4],filesize);
 	putInt32(&header[40],datasize);
 	pf=fopen(filename,"wb");
 	if (pf)
 	{
-		printf("Save \"%s\"  %i seconds",filename,size/SF);
+		unsigned int t=size/BAUDS;
+		printf("Save \"%s\"  %i min %i seconds\n",filename,t/60,t%60);
 		fwrite(header,sizeof(U8),sizeof(header),pf);
-		for (i=0; i<size; i++)
+		for (j=0; j<size; j++)
 		{
-			int sample=data[i];
-			unsigned int code=(unsigned int)(sample);
-			U8 a=(code & 0xFF);
-			U8 b=((code >> 8) & 0xFF);
-			fputc(0x00,pf);
-			fputc(0x00,pf);
-			fputc(a,pf);
-			fputc(b,pf);
+			U8 bit=track[j];
+			for (i=0; i<COUNT; i++)
+			{
+				unsigned int code=calcSin(bit);
+				U8 a=(code & 0xFF);
+				U8 b=((code >> 8) & 0xFF);
+				fputc(a/*0x00*/,pf);
+				fputc(b/*0x00*/,pf);
+				fputc(a,pf);
+				fputc(b,pf);
+			};
 		};
 		fclose(pf);
 	};
@@ -285,25 +279,31 @@ void buildList(int argc, char *argv[])
 {
 	U8 buf[128*1024];
 	unsigned int i,pos,size;
-	int *track;
+	U8 *track;
 	track=NULL;
+	printf("Sampling frequency %i [Hz]\n",SF);
+	printf("Speed %i [bauds]\n",BAUDS);
+	printf("Space frequency %i [Hz]\n",FQSPACE);
+	printf("Sign frequency %i [Hz]\n",FQSIGN);
 	for (i=0; i<(argc-2); i++)
 	{
 		size=loadBIN(argv[1+i],buf,sizeof(buf));
-		printf("Scanning \"%s\"  %i bytes\n",argv[1+i],size);
+		printf("Scanning \"%s\" (%i bytes)\n",argv[1+i],size);
 		addXEX(track,&pos,buf,size);
 	};
-	printf("Need %i samples (%i Mbytes)\n",pos,(int)(sizeof(int)*pos)/1000000);
-	track=(int *)malloc(sizeof(int)*pos);
+	printf("Need %i pulses\n",pos);
+	track=(U8 *)malloc(sizeof(U8)*pos);
 	for (i=0; i<pos; i++) {track[i]=0;};
 	if (track)
 	{
 		pos=0;
 		for (i=0; i<(argc-2); i++)
 		{
+			unsigned int lpos=pos;
 			size=loadBIN(argv[1+i],buf,sizeof(buf));
-			printf("Building \"%s\"  %i bytes\n",argv[1+i],size);
+			printf("Building \"%s\"\n",argv[1+i]);
 			addXEX(track,&pos,buf,size);
+			printf("\"%s\" need %i seconds\n",argv[1+i],(pos-lpos)/BAUDS);
 		};	
 		saveWAV(argv[argc-1],track,pos);
 		free(track);
