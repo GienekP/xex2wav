@@ -207,6 +207,7 @@ void addFile(int *track, unsigned int *pos, const U8 *file, unsigned int size, U
 			cnt-=128;
 		};
 	};
+	addGap(track,pos,1);
 	addRecord(track,pos,file,0);
 }
 /*--------------------------------------------------------------------*/
