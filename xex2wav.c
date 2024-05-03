@@ -12,8 +12,8 @@ const unsigned int FQSPACE=3995;
 const unsigned int FQSIGN=5327;
 const unsigned int COUNT=73;
 const unsigned int BAUDS=(SF/COUNT);
-const unsigned int GAPLONG=19000;
-const unsigned int GAPNORMAL=2982;
+const unsigned int GAPLONG=20000;
+const unsigned int GAPNORMAL=3000;
 const unsigned int GAPSHORT=250;
 const unsigned int GAPSILENT=1000;
 /*--------------------------------------------------------------------*/
@@ -120,9 +120,9 @@ void addGap(U8 *track, unsigned int *pos, U8 mode)
 	unsigned int i,ms,n;
 	switch (mode)
 	{
-		case 1: {ms=250;} break;
-		case 2: {ms=3000;} break;
-		case 3: {ms=20*1000;} break;		
+		case 1: {ms=GAPSHORT;} break;
+		case 2: {ms=GAPNORMAL;} break;
+		case 3: {ms=GAPLONG;} break;		
 		default: {ms=0;} break;
 	};
 	n=(ms*BAUDS)/1000;
